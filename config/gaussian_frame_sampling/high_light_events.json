@@ -1,0 +1,15 @@
+{
+  "description": "Interesting events from high light semantics run",
+  "bag_name": "10_15_high_light_semantics.mcap",
+  "timestamps": [
+    1760644659119000000,
+    1760644668681869922
+  ],
+  "num_frames": 50,
+  "sigma_seconds": 7.0,
+  "color_topic": "/BD03/d455/color/image_raw",
+  "depth_topic": "/BD03/d455/depth/image_rect_raw",
+  "max_time_diff_ms": 50.0,
+  "notes": "Key moments with good lighting and semantic features"
+}
+

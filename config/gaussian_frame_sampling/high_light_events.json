@@ -3,10 +3,18 @@
   "bag_name": "10_15_high_light_semantics.mcap",
   "timestamps": [
     1760644659119000000,
-    1760644668681869922
+    1760644668681869922,
+    1760644684034000000,
+    1760644699255436947,
+    1760644711920901558,
+    1760644721198299690,
+    1760644739355796918,
+    1760644745836961973,
+    1760644754887096104,
+    1760644760340432548
   ],
-  "num_frames": 50,
-  "sigma_seconds": 7.0,
+  "num_frames": 250,
+  "sigma_seconds": 2.0,
   "color_topic": "/BD03/d455/color/image_raw",
   "depth_topic": "/BD03/d455/depth/image_rect_raw",
   "max_time_diff_ms": 50.0,

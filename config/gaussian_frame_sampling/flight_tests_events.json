@@ -1,0 +1,24 @@
+{
+  "description": "Interesting events from mixed altitude/lighting flight test.",
+  "bag_name": "10_16_different_light_flight_semantics.mcap",
+  "timestamps": [
+    1760646422275308284,
+    1760646452768080922,
+    1760646467867619145,
+    1760646483845792270,
+    1760646511395069456,
+    1760646553086058885,
+    1760646630936184214,
+    1760646660967951231,
+    1760646700470012222,
+    1760646724605343111
+  ],
+  "num_frames": 500,
+  "sigma_seconds": 10.0,
+  "min_gap_seconds": 0.5,
+  "color_topic": "/BD03/d455/color/image_raw",
+  "depth_topic": "/BD03/d455/depth/image_rect_raw",
+  "max_time_diff_ms": 50.0,
+  "notes": "Key moments from mixed altitude/lighting flight test."
+}
+

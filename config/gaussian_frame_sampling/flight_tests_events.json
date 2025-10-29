@@ -1,6 +1,7 @@
 {
   "description": "Interesting events from mixed altitude/lighting flight test.",
   "bag_name": "10_16_different_light_flight_semantics.mcap",
+  "sampling_mode": "hard",
   "timestamps": [
     1760646422275308284,
     1760646452768080922,

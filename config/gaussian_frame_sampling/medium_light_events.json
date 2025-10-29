@@ -1,6 +1,7 @@
 {
   "description": "Interesting events from medium light semantics run",
   "bag_name": "10_15_medium_light_semantics.mcap",
+  "sampling_mode": "hard",
   "timestamps": [
     1760644801507619383,
     1760644808155055657,

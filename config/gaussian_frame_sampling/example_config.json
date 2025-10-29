@@ -1,0 +1,13 @@
+{
+  "description": "Example configuration for hard sampling",
+  "sampling_mode": "hard",
+  "timestamps": [1760644685375549387, 1760644695047075526, 1760644717734949040],
+  "num_frames": 100,
+  "sigma_seconds": 5.0,
+  "min_gap_seconds": 0.5,
+  "color_topic": "/BD03/d455/color/image_raw",
+  "depth_topic": "/BD03/d455/depth/image_rect_raw",
+  "max_time_diff_ms": 50.0,
+  "notes": "Hard sampling with minimum time gap to avoid temporal redundancy. Command line arguments override config values."
+}
+

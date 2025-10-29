@@ -1,0 +1,17 @@
+{
+  "background": 0,
+  "cones": {
+    "red": 1,
+    "orange": 2,
+    "purple": 3,
+    "green": 4,
+    "yellow": 5,
+    "blue": 6
+  },
+  "balls": {
+    "red": 7,
+    "yellow": 8,
+    "blue": 9,
+    "green": 10
+  }
+}

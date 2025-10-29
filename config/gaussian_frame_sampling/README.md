@@ -2,18 +2,24 @@
 
 This directory contains JSON configuration files for specifying timestamps and parameters for sampling frames from MCAP bags.
 
-## Two Sampling Methods
+## Sampling Methods
 
-### 1. **Gaussian Sampling** (`mcap_to_imgs_gaussian.py`)
+The unified `mcap_to_imgs.py` script supports three sampling modes:
+
+### 1. **Random Sampling** (`--mode random`)
+- Random sampling across entire dataset
+- Good for baseline/uniform coverage
+
+### 2. **Gaussian Sampling** (`--mode gaussian`)
 - Samples frames with higher probability around target timestamps
 - May include temporally redundant frames (frames very close in time)
 - Good for quick exploration
 
-### 2. **Hard Sampling** (`mcap_to_imgs_hard_sampling.py`) ⭐ **RECOMMENDED**
+### 3. **Hard Sampling** (`--mode hard`) **RECOMMENDED / DEFAULT IN CONFIGS**
 - Gaussian sampling + minimum time gap enforcement
 - Eliminates temporal redundancy (avoids nearly-identical consecutive frames)
 - More efficient for training - better diversity, less overfitting
-- **Use this if you haven't started labeling/training yet!**
+- **All configs in this directory use hard sampling by default**
 
 ## Configuration Format
 
@@ -21,6 +27,7 @@ This directory contains JSON configuration files for specifying timestamps and p
 {
   "description": "Human-readable description of what these timestamps represent",
   "bag_name": "optional_reference_to_bag_file.mcap",
+  "sampling_mode": "hard",
   "timestamps": [
     1760644685375549387,
     1760644695047075526,
@@ -39,16 +46,21 @@ This directory contains JSON configuration files for specifying timestamps and p
 ## Required Fields
 
 - `timestamps`: Array of integers (timestamps in nanoseconds) - centers of Gaussian distributions
+  - Required for `gaussian` and `hard` modes only
 
 ## Optional Fields
 
+- `sampling_mode`: Sampling strategy - `"random"`, `"gaussian"`, or `"hard"` (default: `"random"`)
+  - **All configs in this directory use `"hard"` by default**
 - `description`: Description of the configuration
 - `bag_name`: Reference to the MCAP file (for documentation)
 - `num_frames`: Number of frames to extract (default: 100)
 - `sigma_seconds`: Gaussian standard deviation in seconds (default: 5.0)
+  - Only used for `gaussian` and `hard` modes
   - Larger values = wider sampling around each timestamp
   - Smaller values = tighter focus on specific moments
-- `min_gap_seconds`: **[Hard Sampling only]** Minimum time between frames in seconds (default: 0.5)
+- `min_gap_seconds`: Minimum time between frames in seconds (default: 0.5)
+  - Only used for `hard` mode
   - `0.5s`: Good balance of diversity and coverage
   - `1.0s`: More diversity, fewer similar frames
   - `0.2s`: Less strict, more frames but some redundancy
@@ -59,44 +71,51 @@ This directory contains JSON configuration files for specifying timestamps and p
 
 ## Usage
 
-### Hard Sampling (Recommended)
+### Using Config Files (Recommended)
 
 ```bash
-# Use a config file with hard sampling
-python src/mcap_to_imgs_hard_sampling.py \
-  data/bags/your_bag.mcap \
+# Use a config file (automatically uses hard sampling if specified in config)
+python src/mcap_to_imgs.py data/bags/your_bag.mcap \
   --config config/gaussian_frame_sampling/your_config.json \
   -s 42
 
 # Override minimum gap for more diversity
-python src/mcap_to_imgs_hard_sampling.py \
-  data/bags/your_bag.mcap \
+python src/mcap_to_imgs.py data/bags/your_bag.mcap \
   --config config/gaussian_frame_sampling/your_config.json \
   --min-gap 1.0 \
   -s 42
 
 # Override number of frames
-python src/mcap_to_imgs_hard_sampling.py \
-  data/bags/your_bag.mcap \
+python src/mcap_to_imgs.py data/bags/your_bag.mcap \
   --config config/gaussian_frame_sampling/your_config.json \
   -n 300 \
   -s 42
+
+# Override sampling mode
+python src/mcap_to_imgs.py data/bags/your_bag.mcap \
+  --config config/gaussian_frame_sampling/your_config.json \
+  --mode gaussian
 ```
 
-### Gaussian Sampling (Original Method)
+### Command-Line Only (No Config)
 
 ```bash
-# Use a config file
-python src/mcap_to_imgs_gaussian.py \
-  data/bags/your_bag.mcap \
-  --config config/gaussian_frame_sampling/your_config.json
+# Hard sampling with timestamps
+python src/mcap_to_imgs.py data/bags/your_bag.mcap \
+  --mode hard \
+  -t 1760644700000000000 1760644750000000000 \
+  -n 100 \
+  --min-gap 0.5
 
-# Override specific parameters
-python src/mcap_to_imgs_gaussian.py \
-  data/bags/your_bag.mcap \
-  --config config/gaussian_frame_sampling/your_config.json \
-  -n 200 \
-  --sigma 10.0
+# Gaussian sampling
+python src/mcap_to_imgs.py data/bags/your_bag.mcap \
+  --mode gaussian \
+  -t 1760644700000000000 1760644750000000000 \
+  -n 100
+
+# Random sampling (no timestamps needed)
+python src/mcap_to_imgs.py data/bags/your_bag.mcap \
+  -n 100
 ```
 
 ## Why Hard Sampling?

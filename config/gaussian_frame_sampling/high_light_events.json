@@ -1,6 +1,7 @@
 {
   "description": "Interesting events from high light semantics run",
   "bag_name": "10_15_high_light_semantics.mcap",
+  "sampling_mode": "hard",
   "timestamps": [
     1760644659119000000,
     1760644668681869922,

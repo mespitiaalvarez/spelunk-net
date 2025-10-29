@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
-Extract color and depth image pairs from MCAP ROS bags using Gaussian-weighted sampling.
-Allows specifying timestamps of interest and samples more heavily around those times.
+Extract color and depth image pairs from MCAP ROS bags with multiple sampling strategies.
+
+Supports three sampling modes:
+- random: Random sampling across entire dataset (default)
+- gaussian: Gaussian-weighted sampling around target timestamps
+- hard: Gaussian sampling with minimum time gap enforcement to avoid temporal redundancy
 """
 
 import argparse
@@ -17,9 +21,33 @@ from mcap.reader import make_reader
 from mcap_ros2.decoder import DecoderFactory
 
 
+def find_project_root(start_path: Path = None) -> Path:
+    """
+    Find the project root directory by looking for the spelunk-net directory.
+    
+    Args:
+        start_path: Starting path to search from (defaults to script location)
+        
+    Returns:
+        Path to the project root directory
+    """
+    if start_path is None:
+        start_path = Path(__file__).resolve()
+    
+    current = start_path if start_path.is_dir() else start_path.parent
+    
+    while current.parent != current:  # Stop at filesystem root
+        if current.name == 'spelunk-net':
+            return current
+        current = current.parent
+    
+    # Fallback: if we can't find spelunk-net, assume we're in src/ and go up one level
+    return Path(__file__).resolve().parent.parent
+
+
 def load_config(config_path: str) -> Dict[str, Any]:
     """
-    Load timestamp configuration from a JSON file.
+    Load configuration from a JSON file.
     
     Args:
         config_path: Path to the JSON config file
@@ -34,13 +62,6 @@ def load_config(config_path: str) -> Dict[str, Any]:
     
     with open(config_path, 'r') as f:
         config = json.load(f)
-    
-    # Validate required fields
-    if 'timestamps' not in config:
-        raise ValueError("Config file must contain 'timestamps' field")
-    
-    if not isinstance(config['timestamps'], list):
-        raise ValueError("'timestamps' must be a list of integers")
     
     return config
 
@@ -169,25 +190,64 @@ def sample_with_distribution(n_samples: int, probabilities: np.ndarray, seed: in
     return sampled_indices
 
 
-def extract_random_frames(mcap_path: str, 
-                          color_topic: str, 
-                          depth_topic: str,
-                          num_frames: int,
-                          target_timestamps: List[int],
-                          sigma_seconds: float = 5.0,
-                          output_base_dir: str = None,
-                          max_time_diff_ms: float = 50.0,
-                          seed: int = None):
+def enforce_minimum_time_gap(sampled_indices: np.ndarray, 
+                            timestamps: np.ndarray,
+                            min_gap_ns: int) -> np.ndarray:
     """
-    Extract color and depth image pairs from an MCAP file using Gaussian-weighted sampling.
+    Filter sampled indices to enforce a minimum time gap between consecutive samples.
+    
+    This implements "hard sampling" to avoid temporal redundancy.
+    
+    Args:
+        sampled_indices: Array of sampled indices from Gaussian distribution
+        timestamps: Array of timestamps corresponding to the indices
+        min_gap_ns: Minimum time gap in nanoseconds
+        
+    Returns:
+        Filtered array of indices with minimum time gap enforced
+    """
+    if len(sampled_indices) == 0:
+        return sampled_indices
+    
+    # Get timestamps for sampled indices and sort by time
+    sample_times = [(idx, timestamps[idx]) for idx in sampled_indices]
+    sample_times.sort(key=lambda x: x[1])  # Sort by timestamp
+    
+    # Keep first sample, then only keep samples that are min_gap_ns apart
+    filtered = [sample_times[0][0]]  # Keep first sample (index)
+    last_kept_time = sample_times[0][1]
+    
+    for idx, ts in sample_times[1:]:
+        if ts - last_kept_time >= min_gap_ns:
+            filtered.append(idx)
+            last_kept_time = ts
+    
+    return np.array(filtered)
+
+
+def extract_frames(mcap_path: str, 
+                   color_topic: str, 
+                   depth_topic: str,
+                   num_frames: int,
+                   sampling_mode: str = 'random',
+                   target_timestamps: Optional[List[int]] = None,
+                   sigma_seconds: float = 5.0,
+                   min_gap_seconds: Optional[float] = None,
+                   output_base_dir: Optional[str] = None,
+                   max_time_diff_ms: float = 50.0,
+                   seed: Optional[int] = None):
+    """
+    Extract color and depth image pairs from an MCAP file.
     
     Args:
         mcap_path: Path to the MCAP file
         color_topic: Topic name for color images
         depth_topic: Topic name for depth images
         num_frames: Number of frames to extract
-        target_timestamps: List of timestamps (in nanoseconds) to center Gaussians on
-        sigma_seconds: Standard deviation of Gaussians in seconds
+        sampling_mode: Sampling strategy ('random', 'gaussian', 'hard')
+        target_timestamps: List of timestamps (in nanoseconds) for gaussian/hard modes
+        sigma_seconds: Standard deviation of Gaussians in seconds (for gaussian/hard modes)
+        min_gap_seconds: Minimum time gap between frames in seconds (for hard mode)
         output_base_dir: Base directory for output (default: data/processed_imgs)
         max_time_diff_ms: Maximum time difference between color and depth in milliseconds
         seed: Random seed for reproducibility
@@ -196,20 +256,28 @@ def extract_random_frames(mcap_path: str,
         random.seed(seed)
         np.random.seed(seed)
     
+    # Validate sampling mode
+    if sampling_mode not in ['random', 'gaussian', 'hard']:
+        raise ValueError(f"Invalid sampling mode: {sampling_mode}. Must be 'random', 'gaussian', or 'hard'")
+    
+    # Validate required parameters for non-random modes
+    if sampling_mode in ['gaussian', 'hard'] and not target_timestamps:
+        raise ValueError(f"sampling_mode '{sampling_mode}' requires target_timestamps")
+    
     mcap_path = Path(mcap_path)
     
     # Set default output base directory
     if output_base_dir is None:
-        # Get the script directory and navigate to data/processed_imgs
-        script_dir = Path(__file__).parent.parent
-        output_base_dir = script_dir / "data" / "processed_imgs"
+        # Find project root and use data/processed_imgs
+        project_root = find_project_root()
+        output_base_dir = project_root / "data" / "processed_imgs"
     else:
         output_base_dir = Path(output_base_dir)
     
     # Create a unique timestamped output directory
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     mcap_name = mcap_path.stem
-    output_dir = output_base_dir / f"{mcap_name}_gaussian_{timestamp}"
+    output_dir = output_base_dir / f"{mcap_name}_{sampling_mode}_{timestamp}"
     
     # Create output directories
     color_dir = output_dir / "color"
@@ -220,8 +288,12 @@ def extract_random_frames(mcap_path: str,
     print(f"Reading MCAP file: {mcap_path}")
     print(f"Color topic: {color_topic}")
     print(f"Depth topic: {depth_topic}")
-    print(f"Gaussian centers: {len(target_timestamps)} timestamps")
-    print(f"Gaussian sigma: {sigma_seconds} seconds")
+    print(f"Sampling mode: {sampling_mode}")
+    if sampling_mode in ['gaussian', 'hard']:
+        print(f"Gaussian centers: {len(target_timestamps)} timestamps")
+        print(f"Gaussian sigma: {sigma_seconds} seconds")
+    if sampling_mode == 'hard':
+        print(f"Minimum time gap: {min_gap_seconds} seconds")
     
     # Read all messages from both topics
     color_msgs = []
@@ -285,17 +357,55 @@ def extract_random_frames(mcap_path: str,
     print(f"  End:   {max_ts}")
     print(f"  Duration: {duration_s:.2f} seconds")
     
-    # Create Gaussian distribution
-    print("\nCreating Gaussian probability distribution...")
-    sigma_ns = int(sigma_seconds * 1e9)
-    prob_dist = create_gaussian_distribution(pair_timestamps, target_timestamps, sigma_ns)
-    
-    # Sample according to the distribution
+    # Sample pairs based on mode
     num_frames = min(num_frames, len(pairs))
-    sampled_indices = sample_with_distribution(num_frames, prob_dist, seed)
-    sampled_pairs = [pairs[i] for i in sampled_indices]
     
-    print(f"\nExtracting {num_frames} frames using Gaussian sampling...")
+    if sampling_mode == 'random':
+        # Random sampling
+        sampled_pairs = random.sample(pairs, num_frames)
+        print(f"\nExtracting {num_frames} random frame pairs...")
+        
+    elif sampling_mode == 'gaussian':
+        # Gaussian-weighted sampling
+        print("\nCreating Gaussian probability distribution...")
+        sigma_ns = int(sigma_seconds * 1e9)
+        prob_dist = create_gaussian_distribution(pair_timestamps, target_timestamps, sigma_ns)
+        
+        sampled_indices = sample_with_distribution(num_frames, prob_dist, seed)
+        sampled_pairs = [pairs[i] for i in sampled_indices]
+        print(f"\nExtracting {num_frames} frames using Gaussian sampling...")
+        
+    else:  # hard sampling
+        # Gaussian sampling with minimum time gap enforcement
+        print("\nCreating Gaussian probability distribution...")
+        sigma_ns = int(sigma_seconds * 1e9)
+        prob_dist = create_gaussian_distribution(pair_timestamps, target_timestamps, sigma_ns)
+        
+        # Oversample to account for filtering
+        oversample_factor = 3
+        initial_samples = min(num_frames * oversample_factor, len(pairs))
+        
+        print(f"Initial sampling (oversampling by {oversample_factor}x): {initial_samples} frames")
+        sampled_indices = sample_with_distribution(initial_samples, prob_dist, seed)
+        
+        # Enforce minimum time gap
+        min_gap_ns = int(min_gap_seconds * 1e9)
+        print(f"Enforcing minimum time gap of {min_gap_seconds}s between frames...")
+        filtered_indices = enforce_minimum_time_gap(sampled_indices, pair_timestamps, min_gap_ns)
+        
+        # Trim to desired number if we got more than requested
+        if len(filtered_indices) > num_frames:
+            filtered_indices = filtered_indices[:num_frames]
+        
+        sampled_pairs = [pairs[i] for i in filtered_indices]
+        
+        print(f"\n✓ After hard sampling: {len(sampled_pairs)} frames (removed {initial_samples - len(sampled_pairs)} temporally redundant frames)")
+        
+        if len(sampled_pairs) < num_frames * 0.8:
+            print(f"\n⚠ Warning: Got {len(sampled_pairs)} frames, which is less than 80% of requested {num_frames}")
+            print(f"   Consider: (1) reducing min_gap_seconds, (2) increasing sigma_seconds, or (3) requesting fewer frames")
+        
+        print(f"\nExtracting {len(sampled_pairs)} frames...")
     
     # Extract and save images
     for idx, (color_idx, depth_idx) in enumerate(tqdm(sampled_pairs)):
@@ -331,28 +441,36 @@ def extract_random_frames(mcap_path: str,
     print(f"  Output directory: {output_dir}")
     print(f"  Color: {color_dir}")
     print(f"  Depth: {depth_dir}")
+    if sampling_mode == 'hard':
+        print(f"\n💡 Next step: Use data augmentation (flip, crop, rotate, color jitter) during training")
+        print(f"   to build robustness without temporal redundancy!")
 
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Extract color and depth image pairs from MCAP ROS bags using Gaussian-weighted sampling",
+        description="Extract color and depth image pairs from MCAP ROS bags with flexible sampling strategies",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
+Sampling Modes:
+  random   : Random sampling across entire dataset (default)
+  gaussian : Gaussian-weighted sampling around target timestamps
+  hard     : Gaussian sampling with minimum time gap enforcement
+
 Examples:
-  # Sample around two specific timestamps
-  %(prog)s bag.mcap -n 100 -t 1760644700000000000 1760644750000000000
+  # Random sampling (default)
+  %(prog)s bag.mcap -n 100
   
-  # Use wider Gaussians (10 second sigma instead of 5)
-  %(prog)s bag.mcap -n 100 -t 1760644700000000000 --sigma 10.0
+  # Gaussian sampling around specific timestamps
+  %(prog)s bag.mcap -n 100 --mode gaussian -t 1760644700000000000 1760644750000000000
   
-  # Sample around multiple events
-  %(prog)s bag.mcap -n 200 -t 1760644700000000000 1760644720000000000 1760644760000000000
+  # Hard sampling with minimum time gap
+  %(prog)s bag.mcap -n 100 --mode hard -t 1760644700000000000 --min-gap 0.5
   
-  # Load timestamps from a config file
-  %(prog)s bag.mcap --config config/my_timestamps.json
+  # Using a config file
+  %(prog)s bag.mcap --config config/my_config.json
   
-  # Use config but override number of frames
-  %(prog)s bag.mcap --config config/my_timestamps.json -n 200
+  # Override config settings
+  %(prog)s bag.mcap --config config/my_config.json -n 200 --sigma 10.0
         """
     )
     parser.add_argument(
@@ -364,7 +482,14 @@ Examples:
         "--config",
         type=str,
         default=None,
-        help="Path to JSON config file with timestamps and settings. Command line args override config values."
+        help="Path to JSON config file. Command line args override config values."
+    )
+    parser.add_argument(
+        "--mode",
+        type=str,
+        choices=['random', 'gaussian', 'hard'],
+        default=None,
+        help="Sampling mode: random (default), gaussian, or hard"
     )
     parser.add_argument(
         "-n", "--num-frames",
@@ -377,7 +502,7 @@ Examples:
         type=int,
         nargs='+',
         default=None,
-        help="Target timestamps (in nanoseconds) to center Gaussians on. Required if --config not provided."
+        help="Target timestamps in nanoseconds (required for gaussian/hard modes unless in config)"
     )
     parser.add_argument(
         "--sigma",
@@ -386,10 +511,16 @@ Examples:
         help="Standard deviation of Gaussians in seconds (default: 5.0, or from config)"
     )
     parser.add_argument(
+        "--min-gap",
+        type=float,
+        default=None,
+        help="Minimum time gap between frames in seconds for hard mode (default: 0.5, or from config)"
+    )
+    parser.add_argument(
         "-o", "--output-base-dir",
         type=str,
         default=None,
-        help="Base output directory (default: data/processed_imgs). A timestamped subdirectory will be created."
+        help="Base output directory (default: data/processed_imgs)"
     )
     parser.add_argument(
         "-c", "--color-topic",
@@ -426,25 +557,29 @@ Examples:
         if 'description' in config:
             print(f"Description: {config['description']}")
     
-    # Validate that we have timestamps from either command line or config
-    timestamps = args.timestamps if args.timestamps else config.get('timestamps')
-    if not timestamps:
-        parser.error("Either --timestamps or --config (with timestamps) must be provided")
-    
     # Merge config with command line args (command line takes precedence)
+    sampling_mode = args.mode if args.mode else config.get('sampling_mode', 'random')
     num_frames = args.num_frames if args.num_frames is not None else config.get('num_frames', 100)
+    timestamps = args.timestamps if args.timestamps else config.get('timestamps')
     sigma_seconds = args.sigma if args.sigma is not None else config.get('sigma_seconds', 5.0)
+    min_gap_seconds = args.min_gap if args.min_gap is not None else config.get('min_gap_seconds', 0.5)
     color_topic = args.color_topic if args.color_topic else config.get('color_topic', '/BD03/d455/color/image_raw')
     depth_topic = args.depth_topic if args.depth_topic else config.get('depth_topic', '/BD03/d455/depth/image_rect_raw')
     max_time_diff = args.max_time_diff if args.max_time_diff is not None else config.get('max_time_diff_ms', 50.0)
     
-    extract_random_frames(
+    # Validate that we have timestamps for gaussian/hard modes
+    if sampling_mode in ['gaussian', 'hard'] and not timestamps:
+        parser.error(f"sampling_mode '{sampling_mode}' requires --timestamps or --config with timestamps")
+    
+    extract_frames(
         mcap_path=args.mcap_path,
         color_topic=color_topic,
         depth_topic=depth_topic,
         num_frames=num_frames,
+        sampling_mode=sampling_mode,
         target_timestamps=timestamps,
         sigma_seconds=sigma_seconds,
+        min_gap_seconds=min_gap_seconds,
         output_base_dir=args.output_base_dir,
         max_time_diff_ms=max_time_diff,
         seed=args.seed
@@ -453,4 +588,3 @@ Examples:
 
 if __name__ == "__main__":
     main()
-

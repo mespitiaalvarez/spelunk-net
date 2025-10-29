@@ -1,0 +1,129 @@
+<?xml version="1.0" ?>
+<sdf version="1.5">
+  <model name="boxed_platform">
+    <link name="base">
+      <inertial>
+        <mass>25.0</mass> <!-- total mass for platform + walls -->
+        <inertia>
+          <ixx>5.0</ixx>
+          <ixy>0</ixy>
+          <ixz>0</ixz>
+          <iyy>5.0</iyy>
+          <iyz>0</iyz>
+          <izz>5.0</izz>
+        </inertia>
+      </inertial>
+
+      <!-- Center platform -->
+      <visual name="platform_visual">
+        <pose>0 0 -0.5 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>5 5 1</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.3 0.3 0.3 1</ambient>
+          <diffuse>0.5 0.5 0.5 1</diffuse>
+        </material>
+      </visual>
+      <collision name="platform_collision">
+        <pose>0 0 -0.5 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>5 5 1</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <!-- North wall -->
+      <visual name="wall_north_visual">
+        <pose>0 2.5 1.5 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>5 0.2 3</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.3 0.3 0.3 1</ambient>
+          <diffuse>0.5 0.5 0.5 1</diffuse>
+        </material>
+      </visual>
+      <collision name="wall_north_collision">
+        <pose>0 2.5 1.5 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>5 0.2 3</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <!-- South wall -->
+      <visual name="wall_south_visual">
+        <pose>0 -2.5 1.5 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>5 0.2 3</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.3 0.3 0.3 1</ambient>
+          <diffuse>0.5 0.5 0.5 1</diffuse>
+        </material>
+      </visual>
+      <collision name="wall_south_collision">
+        <pose>0 -2.5 1.5 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>5 0.2 3</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <!-- East wall -->
+      <visual name="wall_east_visual">
+        <pose>2.5 0 1.5 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.2 5 3</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.3 0.3 0.3 1</ambient>
+          <diffuse>0.5 0.5 0.5 1</diffuse>
+        </material>
+      </visual>
+      <collision name="wall_east_collision">
+        <pose>2.5 0 1.5 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.2 5 3</size>
+          </box>
+        </geometry>
+      </collision>
+
+      <!-- West wall -->
+      <visual name="wall_west_visual">
+        <pose>-2.5 0 1.5 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.2 5 3</size>
+          </box>
+        </geometry>
+        <material>
+          <ambient>0.3 0.3 0.3 1</ambient>
+          <diffuse>0.5 0.5 0.5 1</diffuse>
+        </material>
+      </visual>
+      <collision name="wall_west_collision">
+        <pose>-2.5 0 1.5 0 0 0</pose>
+        <geometry>
+          <box>
+            <size>0.2 5 3</size>
+          </box>
+        </geometry>
+      </collision>
+
+    </link>
+  </model>
+</sdf>

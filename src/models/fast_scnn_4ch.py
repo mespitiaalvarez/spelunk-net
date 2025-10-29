@@ -151,6 +151,58 @@ def freeze_rgb_channels(model):
     print("✓ RGB channels frozen. Only the 4th channel will be trained.")
 
 
+def freeze_all_except_4th_channel_and_classifier(model):
+    """
+    Freeze all model weights except:
+    1. The 4th channel weights in the first conv layer
+    2. The classifier head (and auxlayer if present)
+    
+    This is useful for transfer learning where you want to adapt only
+    the depth channel processing and task-specific classification.
+    """
+    # Step 1: Freeze ALL parameters first
+    for param in model.parameters():
+        param.requires_grad = False
+    
+    # Step 2: Unfreeze the classifier head
+    for param in model.classifier.parameters():
+        param.requires_grad = True
+    
+    # Step 3: Unfreeze auxlayer if it exists
+    if hasattr(model, 'aux') and model.aux:
+        for param in model.auxlayer.parameters():
+            param.requires_grad = True
+    
+    # Step 4: Re-enable the first conv layer but with gradient hook for 4th channel only
+    first_conv = model.learning_to_downsample.conv.conv[0]
+    first_conv.weight.requires_grad = True
+    
+    # Create a custom hook to zero out gradients for RGB channels (keep only 4th channel)
+    def hook_4th_channel_only(grad):
+        """Zero out gradients for the first 3 input channels (RGB), keep 4th channel"""
+        grad_clone = grad.clone()
+        grad_clone[:, :3, :, :] = 0.0  # Freeze RGB channels
+        # grad_clone[:, 3:4, :, :] remains unchanged (trainable 4th channel)
+        return grad_clone
+    
+    # Register the backward hook
+    first_conv.weight.register_hook(hook_4th_channel_only)
+    
+    # Also handle bias if it exists
+    if first_conv.bias is not None:
+        first_conv.bias.requires_grad = True
+    
+    # Print summary
+    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    total_params = sum(p.numel() for p in model.parameters())
+    print("✓ Frozen all weights except:")
+    print("  - 4th channel in first conv layer")
+    print("  - Classifier head")
+    if hasattr(model, 'aux') and model.aux:
+        print("  - Auxiliary classifier")
+    print(f"  Trainable: {trainable_params:,} / {total_params:,} ({100*trainable_params/total_params:.2f}%)")
+
+
 def get_trainable_params(model):
     """
     Get parameters that should be trained.
@@ -175,28 +227,29 @@ def get_4th_channel_only_params(model):
 # Example usage
 if __name__ == '__main__':
     # Create 4-channel model
-    num_classes = 19  # e.g., Cityscapes
+    num_classes = 11  # Background + 10 object classes
     model = FastSCNN4Ch(num_classes=num_classes, in_channels=4, aux=True)
     
     # Load pretrained weights and freeze RGB channels
     pretrained_path = '../../external/Fast-SCNN-pytorch/weights/fast_scnn_citys.pth'
     
     if os.path.exists(pretrained_path):
+        # Load pretrained weights (but don't freeze yet)
         model = load_pretrained_with_new_channel(
             model, 
             pretrained_path, 
-            freeze_rgb=True,
+            freeze_rgb=False,  # Don't freeze yet
             init_method='random'  # or 'zeros', 'mean', etc.
         )
         print("✓ Loaded pretrained weights with 4th channel initialized")
+        
+        # Now freeze everything except 4th channel and classifier
+        freeze_all_except_4th_channel_and_classifier(model)
     
     # Test forward pass
     dummy_input = torch.randn(2, 4, 256, 512)  # 4 channels now!
     outputs = model(dummy_input)
-    print(f"Output shape: {outputs[0].shape}")
-    
-    # Check which parameters are trainable
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    total_params = sum(p.numel() for p in model.parameters())
-    print(f"Trainable parameters: {trainable_params:,} / {total_params:,}")
+    print(f"\nOutput shape: {outputs[0].shape}")
+    if len(outputs) > 1:
+        print(f"Aux output shape: {outputs[1].shape}")
 
